@@ -1,0 +1,9 @@
+FROM eclipse-temurin:8-jre
+
+WORKDIR /opt/pentaho/data-integration
+
+COPY ./pdi6/data-integration/ .
+
+RUN chmod -R +x .
+
+CMD ["tail", "-f", "/dev/null"]

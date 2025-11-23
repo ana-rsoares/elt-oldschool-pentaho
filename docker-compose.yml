@@ -1,0 +1,125 @@
+version: "3.9"
+
+services:
+  # postgres:
+  #   image: postgres:15
+  #   container_name: elt_postgres
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     POSTGRES_DB: ${POSTGRES_DB}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - ./data/postgres:/var/lib/postgresql/data
+  #   networks: [eltnet]
+
+  minio:
+    image: quay.io/minio/minio
+    container_name: elt_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./data/minio:/data
+    networks: [eltnet]
+
+  mc:
+    image: minio/mc
+    container_name: elt_mc
+    depends_on:
+      - minio
+    networks: [eltnet]
+    volumes:
+      - ./data/bronze:/bronze
+    entrypoint: /bin/sh
+    tty: true
+
+  redis:
+    image: redis:7
+    container_name: elt_redis
+    networks: [eltnet]
+
+  # superset:
+  #   image: apache/superset
+  #   container_name: elt_superset
+  #   depends_on: [postgres, redis]
+  #   environment:
+  #     SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+  #     PYTHONPATH: /app/pythonpath
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     POSTGRES_DB: ${POSTGRES_DB}
+  #     POSTGRES_HOST: postgres
+  #     REDIS_HOST: redis
+  #   ports:
+  #     - "8088:8088"
+  #   volumes:
+  #     - ./data/superset:/app/superset_home
+  #   networks: [eltnet]
+
+  pentaho6:
+    build:
+      context: .
+      dockerfile: Dockerfile.pentaho6
+    container_name: elt_pentaho6
+    volumes:
+      - ./pdi-repo:/repo
+    networks:
+      - eltnet
+
+  webspoon:
+    build:
+      context: .
+      dockerfile: Dockerfile.webspoon-mc
+    container_name: elt_webspoon
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./pdi-repo:/home/tomcat/repo   
+      - ./pdi-repo:/home/tomcat/.kettle/repo
+      - ./data/bronze:/home/tomcat/output/bronze
+      - ./data/silver:/home/tomcat/output/silver
+      - ./data/gold:/home/tomcat/output/gold
+      - ./data/minio:/minio-data
+      - ./scripts:/scripts
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PATH_STYLE: "true"
+      CATALINA_OPTS: "-Xms512m -Xmx1024m"
+
+  mc-sync:
+    image: minio/mc
+    container_name: elt_mc_sync
+    depends_on:
+      - minio
+    volumes:
+      - ./data/bronze:/bronze
+    entrypoint: >
+      sh -c "
+        echo 'Configurando alias...' &&
+        mc alias set localminio http://minio:9000 admin admin123 &&
+        echo 'Alias ok. Iniciando loop de sync...' &&
+        while true; do
+          echo '--- Sync $(date) ---';
+          mc mb -p localminio/datalake || true;
+          mc mirror --overwrite /bronze localminio/datalake/bronze;
+          sleep 30;
+        done
+      "
+    networks:
+      - eltnet
+
+networks:
+  eltnet:
+    driver: bridge
+
+
+
