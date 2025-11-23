@@ -39,6 +39,7 @@ Manually place the folder pdi6/ into the project root
 Do NOT commit this folder — keep it local only
 
 # 📁 Final Structure on Your Machine
+```bash
 elt-oldschool-pentaho/
 │── data/
 │── pdi-repo/
@@ -49,6 +50,7 @@ elt-oldschool-pentaho/
 │── docker-compose.yml
 │── Dockerfile.pentaho6
 │── README.md
+```
 
 # 🐳 Setting Up the Stack with Docker
 
